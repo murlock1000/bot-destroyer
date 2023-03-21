@@ -1,9 +1,21 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import asyncio
 import logging
 from datetime import datetime
 
 # noinspection PyPackageRequirements
-from nio import MatrixRoom, RoomCreateResponse, RoomMemberEvent
+from nio import (MatrixRoom, 
+                RoomCreateResponse,
+                RoomMemberEvent,
+                InviteMemberEvent,
+                JoinError,
+                MegolmEvent,
+                RoomMessageText,
+                AsyncClient,
+                )
+from bot_destroyer.bot_commands import Command
 
 from bot_destroyer.chat_functions import (
     create_private_room,
@@ -11,6 +23,8 @@ from bot_destroyer.chat_functions import (
     send_file_to_room,
     send_text_to_room,
 )
+from bot_destroyer.config import Config
+from bot_destroyer.storage import Storage
 from bot_destroyer.utils import with_ratelimit
 
 logger = logging.getLogger(__name__)
@@ -19,7 +33,7 @@ DUPLICATES_CACHE_SIZE = 1000
 
 
 class Callbacks(object):
-    def __init__(self, client, store, config):
+    def __init__(self, client: AsyncClient, store: Storage, config: Config):
         """
         Args:
             client (nio.AsyncClient): nio client used to interact with matrix
@@ -29,6 +43,7 @@ class Callbacks(object):
         self.client = client
         self.store = store
         self.config = config
+        self.command_prefix = config.command_prefix
         self.received_events = []
 
         self.rooms_pending = {}
@@ -48,6 +63,83 @@ class Callbacks(object):
             return False
         self.received_events.insert(0, event_id)
         return True
+
+    async def message(self, room: MatrixRoom, event: RoomMessageText):
+        # If ignoring old messages, ignore messages older than 5 minutes
+        if (datetime.now() - datetime.fromtimestamp(event.server_timestamp / 1000.0)).total_seconds() > 300:
+            return
+        
+        self.trim_duplicates_caches()
+        if self.should_process(event.event_id) is False:
+            return
+        
+        await self._message(room, event)
+        
+    async def _message(self, room, event):
+        # Extract the message text
+        msg = event.body
+
+        # Ignore messages from ourselves
+        if event.sender == self.client.user:
+            return
+
+        # If this looks like an edit, strip the edit prefix
+        if msg.startswith(" * "):
+            msg = msg[3:]
+
+        # Process as message if in a public room without command prefix
+        # TODO Implement check of named commands using an array
+        has_command_prefix = msg.startswith(self.command_prefix)
+
+        if has_command_prefix:
+            msg = msg[len(self.command_prefix):]
+            command = Command(self.client, self.store, self.config, msg, room, event)
+            await command.process()
+
+    async def invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
+        """Callback for when an invite is received. Join the room specified in the invite.
+        Args:
+            room: The room that we are invited to.
+            event: The invite event.
+        """
+        
+        if event.state_key != self.client.user_id:
+            # Ignore not our own membership (invite) events
+            return
+        
+        logger.debug(f"Got invite to {room.room_id} from {event.sender}.")
+
+        # Attempt to join 3 times before giving up
+        for attempt in range(3):
+            result = await self.client.join(room.room_id)
+            if type(result) == JoinError:
+                logger.error(
+                    f"Error joining room {room.room_id} (attempt %d): %s",
+                    attempt,
+                    result.message,
+                )
+            else:
+                break
+        else:
+            logger.error("Unable to join room: %s", room.room_id)
+
+        # Successfully joined room
+        logger.info(f"Joined {room.room_id}")
+        # Send out key request for encrypted events in room so we can accept the m.forwarded_room_key event
+        response = await self.client.sync()
+        for joined_room_id, room_info in response.rooms.join.items():
+            if joined_room_id == room.room_id:
+                for ev in room_info.timeline.events:
+                    if type(ev) is MegolmEvent:
+                        try:
+                            # Request keys for the event and update the client store
+                            if ev in self.client.outgoing_key_requests:
+                                logger.debug("popping the session request")
+                                self.client.outgoing_key_requests.pop(ev.session_id)
+                            room_key_response = await self.client.request_room_key(ev)
+                            await self.client.receive_response(room_key_response)
+                        except Exception as e:
+                            logger.info(f"Error requesting key for event: {e}")
 
     async def member(self, room: MatrixRoom, event: RoomMemberEvent) -> None:
         """Callback for when a room member event is received.

@@ -10,7 +10,10 @@ from nio import (
     LocalProtocolError,
     LoginError,
     RoomMemberEvent,
+    InviteMemberEvent,
+    RoomMessageText
 )
+from bot_destroyer import destroy_loop
 
 from bot_destroyer.callbacks import Callbacks
 from bot_destroyer.config import Config
@@ -79,7 +82,8 @@ async def main(args):
 
     # Set up event callbacks for receiving room member events
     callbacks = Callbacks(client, store, config)
-    client.add_event_callback(callbacks.member, (RoomMemberEvent,))
+    client.add_event_callback(callbacks.invite, (InviteMemberEvent,))
+    client.add_event_callback(callbacks.message, (RoomMessageText,))
 
     # Keep trying to reconnect on failure (with some time in-between)
     try:
@@ -115,11 +119,9 @@ async def main(args):
         logger.info(f"Logged in as {config.user_id}")
 
         # Create tasks for bot to perform asynchronously
-        async def after_first_sync(client: AsyncClient, tasks):
+        async def after_first_sync(client: AsyncClient):
             await client.synced.wait()
-
-            for task in tasks:
-                await task
+            await destroy_loop(client, store)
 
         sync_forever_task = asyncio.create_task(
             client.sync_forever(30000, full_state=True)

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 # The latest migration version of the database.
 #
@@ -119,6 +119,26 @@ class Storage:
             self._execute("UPDATE migration_version SET version = 1")
 
             logger.info("Database migrated to v1")
+        if current_migration_version < 2:
+            logger.info("Migrating the database from v1 to v2...")
+
+            # Add new table, delete old ones, etc.
+            # Add table for storing last to be destroyed events and their timestamps for rooms the bot is in.
+            self._execute(
+                """
+                CREATE TABLE last_room_events (
+                    room_id VARCHAR(80) PRIMARY KEY,
+                    event_id VARCHAR(80),
+                    timestamp TEXT,
+                    delete_after TEXT,
+                    deletion_turned_on NUMBER, 
+                )
+                """
+            )
+            # Update the stored migration version
+            self._execute("UPDATE migration_version SET version = 2")
+
+            logger.info("Database migrated to v2")
 
     def _execute(self, *args) -> None:
         """A wrapper around cursor.execute that transforms placeholder ?'s to %s for postgres.
@@ -174,3 +194,121 @@ class Storage:
                 uri,
             ),
         )
+        
+    def create_room(self, room_id:str):
+        self._execute(
+            """
+            INSERT INTO last_room_events (room_id) VALUES(?)
+        """,
+            (
+                room_id,
+            ),
+        )
+        
+    def get_room(self, room_id:str) -> str:
+        self._execute("SELECT room_id FROM last_room_events WHERE room_id= ?;", (room_id,))
+        id = self.cursor.fetchone()
+        if id:
+            return id[0]
+        return id
+    
+    def get_all_rooms(self) -> List[str]:
+        self._execute("SELECT room_id FROM last_room_events;", ())
+        rows = self.cursor.fetchall()
+        return [row[0] for row in rows]
+        
+    def set_room_event(self, room_id:str, event_id:str, timestamp:str):
+        self._execute(
+            """
+            UPDATE last_room_events SET (event_id, timestamp) VALUES(?,?) WHERE room_id =?
+        """,
+            (
+                event_id,
+                timestamp,
+                room_id,
+            ),
+        )
+        
+    def set_delete_after(self, room_id:str, delete_after: str):
+        self._execute(
+            """
+            UPDATE last_room_events SET (delete_after) VALUES(?) WHERE room_id =?
+        """,
+            (
+                delete_after,
+                room_id,
+            ),
+        )
+        
+    def set_deletion_turned_on(self, room_id:str, deletion_turned_on: bool):
+        self._execute(
+            """
+            UPDATE last_room_events SET (deletion_turned_on) VALUES(?) WHERE room_id =?
+        """,
+            (
+                deletion_turned_on,
+                room_id,
+            ),
+        )
+    
+    def get_room_event(self, room_id:str):
+        self._execute(
+            """
+            SELECT (event_id, timestamp) FROM last_room_events WHERE room_id =?
+        """,
+            (
+                room_id,
+            ),
+        )
+        
+        row = self.cursor.fetchone()
+        
+        if row:
+            return {
+                "room_id": room_id,
+                "event_id": row[0],
+                "timestamp": row[1]
+            }
+        return None
+    
+    def get_room_all(self, room_id:str):
+        self._execute(
+            """
+            SELECT (room_id, event_id, timestamp, delete_after, deletion_turned_on) FROM last_room_events WHERE room_id =?
+        """,
+            (
+                room_id,
+            ),
+        )
+        
+        row = self.cursor.fetchone()
+        
+        if row:
+            return {
+                "room_id": room_id,
+                "event_id": row[0],
+                "timestamp": row[1],
+                "delete_after": row[2],
+                "deletion_turned_on": row[3]
+            }
+        return None
+    
+    def get_room_deletion(self, room_id:str):
+        self._execute(
+            """
+            SELECT (deletion_turned_on, delete_after) FROM last_room_events WHERE room_id =?
+        """,
+            (
+                room_id,
+            ),
+        )
+        
+        row = self.cursor.fetchone()
+        
+        if row:
+            return {
+                "room_id": room_id,
+                "deletion_turned_on": row[0],
+                "delete_after": row[1]
+            }
+        return None
