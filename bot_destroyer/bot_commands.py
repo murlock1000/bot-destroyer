@@ -3,7 +3,7 @@ from bot_destroyer import commands_help
 
 from bot_destroyer.chat_functions import react_to_event, send_text_to_room
 from bot_destroyer.config import Config
-from bot_destroyer.destroy_loop import Room
+from bot_destroyer.destroy_loop import Destroyer, Room
 from bot_destroyer.storage import Storage
 
 
@@ -75,8 +75,12 @@ class Command:
             return
         
         self.room.deletion_turned_on = False
-        await send_text_to_room(self.client, self.event_room.room_id, "Deletion disabled.")
-
+        
+        if Destroyer.stop_room_loop(self.room):
+            await send_text_to_room(self.client, self.event_room.room_id, "Deletion disabled.")
+        else:
+            await send_text_to_room(self.client, self.event_room.room_id, "Failed to disable room deletion.")
+    
     async def _enable(self):
         """Request to enable message deletion"""
         
@@ -107,9 +111,10 @@ class Command:
         self.room.deletion_turned_on = True
         self.room.accept_requested = False
         
-        await send_text_to_room(self.client, self.event_room.room_id, "Deleting old messages.")
-        return
-        
+        if Destroyer.start_room_loop(self.room):
+            await send_text_to_room(self.client, self.event_room.room_id, "Deleting old messages.")
+        else:
+            await send_text_to_room(self.client, self.event_room.room_id, "Failed to start deletion process.")
 
     async def _delay(self):
         """Delay command"""

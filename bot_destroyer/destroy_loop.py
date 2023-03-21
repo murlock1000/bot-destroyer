@@ -1,7 +1,14 @@
+from __future__ import annotations
+import asyncio
+from typing import TYPE_CHECKING
+
 import datetime
+import logging
 from nio import AsyncClient, RoomMessagesResponse, Event
 
 from bot_destroyer.storage import Storage
+
+logger = logging.getLogger(__name__)
 
 persist_event_types = [
             "m.room.server_acl",
@@ -42,13 +49,12 @@ class Room(object):
         
         self.room = self.client.rooms.get(self.room_id, None)
         self.accept_requested = False
-
         
     def set_delete_after(self, delete_after):
         self.delete_after_m = delete_after
         self.storage.set_delete_after(self.room_id, delete_after)
 
-    def event_expired(self, event: Event):
+    def event_expired(self, event: Event) -> bool:
         event_time = datetime.fromtimestamp(event.server_timestamp / 1000.0)
         current_time = datetime.now()
         
@@ -75,9 +81,14 @@ class Room(object):
                         break
         
         return ev
+    
+    async def main_loop(self):
+        while self.deletion_turned_on:
+            logger.debug("Check messages")
+            asyncio.sleep(5)
         
     @staticmethod
-    def get_existing(client: AsyncClient, storage:Storage, room_id:str):
+    def get_existing(client: AsyncClient, storage:Storage, room_id:str) -> Room:
         
         # Check cache first
         room = Room.room_cache.get(room_id, None)
@@ -94,12 +105,13 @@ class Room(object):
             return room
 
     @staticmethod
-    def create_new(client: AsyncClient, storage:Storage, room_id:str):
+    def create_new(client: AsyncClient, storage:Storage, room_id:str) -> Room:
         # Create Room entry if not found in DB
         storage.create_room(room_id)
         return Room(client, storage, room_id)
 
 class Destroyer(object):
+    room_tasks = {}
     
     def __init__(self, client: AsyncClient, storage: Storage):
         self.client = client
@@ -107,13 +119,39 @@ class Destroyer(object):
         
         room_ids = self.storage.get_all_rooms()
         
-        self.rooms = []
-        
         for room_id in room_ids:
-            room = Room.get_existing(self.storage, room_id)
-            self.rooms.append(room)
+            room: Room = Room.get_existing(self.storage, room_id)
+            
+            if room.deletion_turned_on:
+                main_loop = asyncio.get_event_loop()
+                room_task = main_loop.create_task(room.main_loop())
+                Destroyer.room_tasks[room_id] = room_task
     
-    async def destroy_loop(client: AsyncClient, storage: Storage):
-        pass
+    @staticmethod
+    def start_room_loop(room: Room):
+        if room.room_id in Destroyer.room_tasks.keys():
+            logger.error(f"Room {room.room_id} already exists in task queue")
+            return False
+        
+        main_loop = asyncio.get_event_loop()
+        room_task = main_loop.create_task(room.main_loop())
+        Destroyer.room_tasks[room.room_id] = room_task
+        
+        return True
+    
+    @staticmethod
+    def stop_room_loop(room: Room):
+        if room.room_id not in Destroyer.room_tasks.keys():
+            logger.error(f"Room {room.room_id} is not in task queue")
+            return False
+        
+        task = Destroyer.room_tasks.pop(room.room_id)
+        was_canceled = task.cancel()
+        
+        return was_canceled
+        
+            
+    
+    
     
 
