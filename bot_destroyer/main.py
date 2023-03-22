@@ -33,26 +33,14 @@ async def main(args):
     # A different config file path can be specified as the first command line argument
     config_path = "config.yaml"
 
-    if len(args) == 4:
-        config_path = os.path.join(
-            PROJECT_DIR, args[1]
-        )  # /home/user/bot_destroyer/config.yaml
-        file_path = args[2]  # /home/user/Downloads/image.png
-        receiver_id = args[3]  # @test:matrix.org
-    else:
-        print(
-            "Wrong number of arguments. Usage: nio-send 'config.yaml' 'filepath' 'username'"
-        )
-        exit(1)
-
     # Read the parsed config file and create a Config object
     config = Config(config_path)
 
     # Configure the database
     static_database = config.database
-    static_database["connection_string"] = os.path.join(
-        PROJECT_DIR, static_database["connection_string"]
-    )
+  #  static_database["connection_string"] = os.path.join(
+   #     PROJECT_DIR, static_database["connection_string"]
+   # )
     store = Storage(static_database)
 
     # Configuration options for the AsyncClient
@@ -77,8 +65,6 @@ async def main(args):
         client.user_id = config.user_id
 
     client.user_name = config.user_name
-
-    receiver_id = f"@{receiver_id}:{config.user_suffix}"
 
     # Set up event callbacks for receiving room member events
     callbacks = Callbacks(client, store, config)
@@ -121,29 +107,15 @@ async def main(args):
         # Create tasks for bot to perform asynchronously
         async def after_first_sync(client: AsyncClient):
             await client.synced.wait()
-            await destroy_loop(client, store)
+            client.destroyer = destroy_loop.Destroyer(client, store)
 
         sync_forever_task = asyncio.create_task(
             client.sync_forever(30000, full_state=True)
         )
         callbacks.main_loop = sync_forever_task
 
-        # IMPORTANT BITS FOR SETTING UP MESSAGES
-        first_message = callbacks.send_msg(
-            receiver_id, "Hello World!", "text", roomname="User Room"
-        )
-        second_message = callbacks.send_msg(
-            receiver_id, "Here is your file", "text", roomname="User Room"
-        )
-        third_message = callbacks.send_msg(
-            receiver_id, file_path, "image", roomname="User Room"
-        )
-        task_queue = [first_message, second_message, third_message]
-        #############################################
-
-        callbacks.items_to_send = len(task_queue)
         after_first_sync_task = asyncio.create_task(
-            after_first_sync(client, task_queue)
+            after_first_sync(client)
         )
 
         await asyncio.gather(

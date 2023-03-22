@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 # the version specified here.
 #
 # When a migration is performed, the `migration_version` table should be incremented.
-latest_migration_version = 1
+latest_migration_version = 2
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,8 @@ class Storage:
                     event_id VARCHAR(80),
                     timestamp TEXT,
                     delete_after TEXT,
-                    deletion_turned_on NUMBER, 
+                    deletion_turned_on VARCHAR(1),
+                    batch_token VARCHAR(80)
                 )
                 """
             )
@@ -217,14 +218,15 @@ class Storage:
         rows = self.cursor.fetchall()
         return [row[0] for row in rows]
         
-    def set_room_event(self, room_id:str, event_id:str, timestamp:str):
+    def set_room_event(self, room_id:str, event_id:str, timestamp:str, batch_token:str):
         self._execute(
             """
-            UPDATE last_room_events SET (event_id, timestamp) VALUES(?,?) WHERE room_id =?
+            UPDATE last_room_events SET event_id= ?, timestamp=?, batch_token=? WHERE room_id =?
         """,
             (
                 event_id,
                 timestamp,
+                batch_token,
                 room_id,
             ),
         )
@@ -232,7 +234,7 @@ class Storage:
     def set_delete_after(self, room_id:str, delete_after: str):
         self._execute(
             """
-            UPDATE last_room_events SET (delete_after) VALUES(?) WHERE room_id =?
+            UPDATE last_room_events SET delete_after= ? WHERE room_id =?
         """,
             (
                 delete_after,
@@ -254,27 +256,7 @@ class Storage:
     def get_room_event(self, room_id:str):
         self._execute(
             """
-            SELECT (event_id, timestamp) FROM last_room_events WHERE room_id =?
-        """,
-            (
-                room_id,
-            ),
-        )
-        
-        row = self.cursor.fetchone()
-        
-        if row:
-            return {
-                "room_id": room_id,
-                "event_id": row[0],
-                "timestamp": row[1]
-            }
-        return None
-    
-    def get_room_all(self, room_id:str):
-        self._execute(
-            """
-            SELECT (room_id, event_id, timestamp, delete_after, deletion_turned_on) FROM last_room_events WHERE room_id =?
+            SELECT event_id, timestamp, batch_token FROM last_room_events WHERE room_id =?
         """,
             (
                 room_id,
@@ -288,15 +270,37 @@ class Storage:
                 "room_id": room_id,
                 "event_id": row[0],
                 "timestamp": row[1],
-                "delete_after": row[2],
-                "deletion_turned_on": row[3]
+                "batch_token": row[2]
+            }
+        return None
+    
+    def get_room_all(self, room_id:str):
+        self._execute(
+            """
+            SELECT room_id, event_id, timestamp, delete_after, deletion_turned_on, batch_token FROM last_room_events WHERE room_id =?
+        """,
+            (
+                room_id,
+            ),
+        )
+        
+        row = self.cursor.fetchone()
+        
+        if row:
+            return {
+                "room_id": row[0],
+                "event_id": row[1],
+                "timestamp": row[2],
+                "delete_after": row[3],
+                "deletion_turned_on": row[4],
+                "batch_token": row[5]
             }
         return None
     
     def get_room_deletion(self, room_id:str):
         self._execute(
             """
-            SELECT (deletion_turned_on, delete_after) FROM last_room_events WHERE room_id =?
+            SELECT deletion_turned_on, delete_after FROM last_room_events WHERE room_id =?
         """,
             (
                 room_id,

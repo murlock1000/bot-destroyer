@@ -268,6 +268,9 @@ async def invite_to_room(
         )
     return resp
 
+@with_ratelimit
+async def send_room_redact(client: AsyncClient, room_id: str, event_id: str):
+    return await client.room_redact(room_id, event_id)
 
 async def send_file_to_room(
     client: AsyncClient,

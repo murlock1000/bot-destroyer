@@ -1,7 +1,7 @@
-from nio import AsyncClient, MatrixRoom, RoomMessageText
+from nio import AsyncClient, MatrixRoom, RoomMessageText, RoomMessagesError
 from bot_destroyer import commands_help
 
-from bot_destroyer.chat_functions import react_to_event, send_text_to_room
+from bot_destroyer.chat_functions import send_text_to_room
 from bot_destroyer.config import Config
 from bot_destroyer.destroy_loop import Destroyer, Room
 from bot_destroyer.storage import Storage
@@ -74,9 +74,9 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, "Deletion already disabled.")
             return
         
-        self.room.deletion_turned_on = False
+        disabled = self.room.disable_room_loop()
         
-        if Destroyer.stop_room_loop(self.room):
+        if disabled:
             await send_text_to_room(self.client, self.event_room.room_id, "Deletion disabled.")
         else:
             await send_text_to_room(self.client, self.event_room.room_id, "Failed to disable room deletion.")
@@ -92,8 +92,11 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, "Message timeout not set. Set using `!c delay <delay in minutes>`")
             return
         
-        first_event_id = await self.room.fetch_first_event_id()
-        
+        try:
+            first_event_id = await self.room.fetch_first_event_id()
+        except Exception as e:
+            await send_text_to_room(self.client, self.event_room.room_id, "Failed to fetch messages.")
+            return
         if not first_event_id:
             await send_text_to_room(self.client, self.event_room.room_id, "No messages will be deleted currently.")
         else:
@@ -108,10 +111,9 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, "Nothing to confirm.")
             return
         
-        self.room.deletion_turned_on = True
-        self.room.accept_requested = False
-        
-        if Destroyer.start_room_loop(self.room):
+        enabled = self.room.enable_room_loop()
+
+        if enabled:
             await send_text_to_room(self.client, self.event_room.room_id, "Deleting old messages.")
         else:
             await send_text_to_room(self.client, self.event_room.room_id, "Failed to start deletion process.")
@@ -123,16 +125,18 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, commands_help.COMMAND_DELAY)
             return
         elif len(self.args) == 1:
-            await self._set_delay(self, self.args[0])
+            await self._set_delay(self.args[0])
         elif len(self.args) == 0:
-            await self._get_delay(self)
+            await self._get_delay()
             
     async def _get_delay(self):
 
         if self.room.delete_after_m is None:
             text = "Delay not set. Set using `!c delay <delay in minutes>`"
         else:
-            text = f"Messages are deleted after {self.room.delete_after_m//(60*1000)} minutes"
+            text = f"Messages are deleted after {self.room.delete_after_m} minutes"
+            
+        await send_text_to_room(self.client, self.event_room.room_id, text)
             
     async def _set_delay(self, delay: str):
         if not delay.isnumeric():
@@ -145,28 +149,14 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, "Delay must be positive")
             return    
         
-        delay_ms = delay_minutes*60*1000
-        
-        self.room.set_delete_after(delay_ms)
+        self.room.set_delete_after(delay_minutes)
+        await send_text_to_room(self.client, self.event_room.room_id, f"Messages will be deleted after {delay_minutes} minutes.")
   
     async def _echo(self):
         """Echo back the command's arguments"""
         response = " ".join(self.args)
         await send_text_to_room(self.client, self.event_room.room_id, response)
 
-    async def _react(self):
-        """Make the bot react to the command message"""
-        # React with a start emoji
-        reaction = "⭐"
-        await react_to_event(
-            self.client, self.event_room.room_id, self.event.event_id, reaction
-        )
-
-        # React with some generic text
-        reaction = "Some text"
-        await react_to_event(
-            self.client, self.event_room.room_id, self.event.event_id, reaction
-        )
 
     async def _show_help(self):
         """Show the help text"""
