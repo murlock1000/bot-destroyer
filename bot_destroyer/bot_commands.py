@@ -92,10 +92,14 @@ class Command:
             await send_text_to_room(self.client, self.event_room.room_id, "Message timeout not set. Set using `!c delay <delay in minutes>`")
             return
         
+        if not self.event_room.power_levels.can_user_redact(self.client.user_id):
+            await send_text_to_room(self.client, self.event_room.room_id, "Bot does not have permission to redact timeline events.")
+            return
+        
         try:
             first_event_id = await self.room.fetch_first_event_id()
         except Exception as e:
-            await send_text_to_room(self.client, self.event_room.room_id, "Failed to fetch messages.")
+            await send_text_to_room(self.client, self.event_room.room_id, f"Failed to fetch messages with error: {e}.")
             return
         if not first_event_id:
             await send_text_to_room(self.client, self.event_room.room_id, "No messages will be deleted currently.")

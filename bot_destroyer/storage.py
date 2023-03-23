@@ -132,7 +132,8 @@ class Storage:
                     timestamp TEXT,
                     delete_after TEXT,
                     deletion_turned_on VARCHAR(1),
-                    batch_token VARCHAR(80)
+                    batch_token_start VARCHAR(80),
+                    batch_token_end VARCHAR(80)
                 )
                 """
             )
@@ -218,15 +219,16 @@ class Storage:
         rows = self.cursor.fetchall()
         return [row[0] for row in rows]
         
-    def set_room_event(self, room_id:str, event_id:str, timestamp:str, batch_token:str):
+    def set_room_event(self, room_id:str, event_id:str, timestamp:str, batch_token_start:str, batch_token_end:str):
         self._execute(
             """
-            UPDATE last_room_events SET event_id= ?, timestamp=?, batch_token=? WHERE room_id =?
+            UPDATE last_room_events SET event_id= ?, timestamp=?, batch_token_start=?, batch_token_end=? WHERE room_id =?
         """,
             (
                 event_id,
                 timestamp,
-                batch_token,
+                batch_token_start,
+                batch_token_end,
                 room_id,
             ),
         )
@@ -245,7 +247,7 @@ class Storage:
     def set_deletion_turned_on(self, room_id:str, deletion_turned_on: bool):
         self._execute(
             """
-            UPDATE last_room_events SET (deletion_turned_on) VALUES(?) WHERE room_id =?
+            UPDATE last_room_events SET deletion_turned_on= ? WHERE room_id =?
         """,
             (
                 deletion_turned_on,
@@ -256,7 +258,7 @@ class Storage:
     def get_room_event(self, room_id:str):
         self._execute(
             """
-            SELECT event_id, timestamp, batch_token FROM last_room_events WHERE room_id =?
+            SELECT event_id, timestamp, batch_token_start, batch_token_end FROM last_room_events WHERE room_id =?
         """,
             (
                 room_id,
@@ -270,14 +272,15 @@ class Storage:
                 "room_id": room_id,
                 "event_id": row[0],
                 "timestamp": row[1],
-                "batch_token": row[2]
+                "batch_token_start": row[2],
+                "batch_token_end": row[3]
             }
         return None
     
     def get_room_all(self, room_id:str):
         self._execute(
             """
-            SELECT room_id, event_id, timestamp, delete_after, deletion_turned_on, batch_token FROM last_room_events WHERE room_id =?
+            SELECT room_id, event_id, timestamp, delete_after, deletion_turned_on, batch_token_start, batch_token_end FROM last_room_events WHERE room_id =?
         """,
             (
                 room_id,
@@ -293,7 +296,8 @@ class Storage:
                 "timestamp": row[2],
                 "delete_after": row[3],
                 "deletion_turned_on": row[4],
-                "batch_token": row[5]
+                "batch_token_start": row[5],
+                "batch_token_end": row[6]
             }
         return None
     
