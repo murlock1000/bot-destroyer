@@ -27,7 +27,7 @@ Install postgres development headers (optional):
 `sudo apt install libpq-dev libpq5`
 
 ### Create a virtual environment
-
+`apt install python3-virtualenv`
 `virtualenv -p python3 env`
 Activate the venv
 `source env/bin/activate`
