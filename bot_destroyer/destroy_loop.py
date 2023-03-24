@@ -285,7 +285,7 @@ class Room(object):
                     return
             else:
                 logger.debug("Waiting for default time")
-                await asyncio.sleep(10)
+                await asyncio.sleep(30)
                 resp = None
                 try:
                     resp = await self.fetch_first_event_id()
