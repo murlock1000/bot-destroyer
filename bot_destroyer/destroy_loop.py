@@ -121,13 +121,18 @@ class Room(object):
         if ev.source.get("redacted_because", {}).get("type", "default") == "m.room.redaction":
             return True
         return False
+    
+    def event_redacted_by_bot(self, ev:Event) -> bool:
+        if self.event_redacted(ev) and ev.source.get("redacted_because", {}).get("sender", "default") == self.client.user_id:
+            return True
+        return False
 
     async def delete_previous_events(self) -> str:
         resp = RoomMessagesResponse("", [], None, self.batch_token_end)
         exit_loop = False   
         delete_from_block_token = None
         
-        # Find first undeleted event
+        # Find first undeleted event by bot
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
             resp = await self.client.room_messages(self.room_id, resp.end)
             if type(resp) == RoomMessagesError:
@@ -135,7 +140,7 @@ class Room(object):
                 raise Exception(resp.status_code)
             for ev in resp.chunk:
                 
-                if self.event_redacted(ev):
+                if self.event_redacted_by_bot(ev):
                     delete_from_block_token = resp.end
                     exit_loop = True
                             
@@ -196,7 +201,7 @@ class Room(object):
                 raise Exception(resp.status_code)
             for ev in resp.chunk:
                 
-                if self.event_redacted(ev):
+                if self.event_redacted_by_bot(ev):
                     exit_loop = True
                 elif self.event_redaction(ev):
                     continue
