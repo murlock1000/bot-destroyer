@@ -26,8 +26,8 @@ long_description = read_file(("README.md",))
 setup(
     name="bot_destroyer",
     version=version,
-    url="https://github.com/murlock1000/nio-send",
-    description="A matrix bot for queuing messages and creating rooms",
+    url="https://github.com/murlock1000/bot-destroyer",
+    description="A matrix bot for redacting expired timeline events",
     packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=[
         "matrix-nio[e2e]>=0.10.0",
@@ -56,5 +56,5 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     # Allow the user to run the bot with `bot_destroyer ...`
-    scripts=["nio-send"],
+    scripts=["bot-destroyer"],
 )
