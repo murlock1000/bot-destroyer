@@ -151,7 +151,9 @@ class Room(object):
             delete_from_block_token = resp.end
             
         resp.end = delete_from_block_token
-        
+        if resp.end is None:
+            resp.end = ""
+            
         exit_loop = False
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
             resp = await self.client.room_messages(self.room_id, resp.end, direction = MessageDirection.front)
