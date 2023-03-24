@@ -150,9 +150,10 @@ class Room(object):
         if delete_from_block_token is None:
             delete_from_block_token = resp.end
             
+        if delete_from_block_token is None or delete_from_block_token == '':
+            delete_from_block_token = "t00-000000_0_0_0_0_0_0_0_0"
+            
         resp.end = delete_from_block_token
-        if resp.end is None:
-            resp.end = ""
             
         exit_loop = False
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
