@@ -110,7 +110,7 @@ async def main(args):
             client.destroyer = destroy_loop.Destroyer(client, store)
 
         sync_forever_task = asyncio.create_task(
-            client.sync_forever(30000, full_state=True)
+            client.sync_forever(30000, full_state=True, loop_sleep_time=10000)
         )
         callbacks.main_loop = sync_forever_task
 
