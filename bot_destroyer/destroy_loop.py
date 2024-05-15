@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
-
+import random
 from datetime import datetime
 import logging
 from nio import AsyncClient, RoomMessagesResponse, Event, RoomMessagesError, MessageDirection, RoomRedactError, RoomContextError, RoomContextResponse
@@ -134,7 +134,7 @@ class Room(object):
         
         # Find first undeleted event by bot
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
-            resp = await self.client.room_messages(self.room_id, resp.end)
+            resp = await self.client.room_messages(self.room_id, resp.end, limit = 100)
             if type(resp) == RoomMessagesError:
                 logger.error(resp)
                 raise Exception(resp.status_code)
@@ -157,7 +157,7 @@ class Room(object):
             
         exit_loop = False
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
-            resp = await self.client.room_messages(self.room_id, resp.end, direction = MessageDirection.front)
+            resp = await self.client.room_messages(self.room_id, resp.end, direction = MessageDirection.front, limit = 100)
             if type(resp) == RoomMessagesError:
                 logger.error(resp)
                 raise Exception(resp.status_code)
@@ -198,7 +198,7 @@ class Room(object):
         iEvent = IEvent()
         
         while(resp.start != resp.end and not exit_loop and resp.end is not None):
-            resp = await self.client.room_messages(self.room_id, resp.end)
+            resp = await self.client.room_messages(self.room_id, resp.end, limit = 100)
             if type(resp) == RoomMessagesError:
                 logger.error(resp)
                 raise Exception(resp.status_code)
@@ -285,7 +285,7 @@ class Room(object):
                     return
             else:
                 logger.debug("Waiting for default time")
-                await asyncio.sleep(300)
+                await asyncio.sleep(300 + random.randit(0, 300))
                 resp = None
                 try:
                     resp = await self.fetch_first_event_id()
