@@ -31,8 +31,10 @@ async def main(args):
 
     # Read user-configured options from a config file.
     # A different config file path can be specified as the first command line argument
-    config_path = "config.yaml"
-
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+    else:
+        config_path = "config.yaml"
     # Read the parsed config file and create a Config object
     config = Config(config_path)
 

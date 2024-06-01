@@ -1,0 +1,26 @@
+[Unit]
+Description=Message deletion service for matrix element implemented using matrix-nio
+Requires=docker.service
+After=docker.service
+
+[Service]
+User=bot_poll
+Group=services
+
+Restart=always
+RestartSec=10
+
+WorkingDirectory=/path/to/bot_destroyer/docker
+
+# Remove old container
+ExecStartPre=/usr/bin/docker-compose down bot-destroyer
+# Compose up
+ExecStart=/usr/bin/docker-compose up bot-destroyer
+
+# Compose down
+ExecStop=/usr/bin/docker-compose down bot-destroyer
+
+#RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

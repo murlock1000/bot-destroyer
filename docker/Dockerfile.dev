@@ -1,0 +1,91 @@
+# This dockerfile is crafted specifically for development purposes.
+# Please use `Dockerfile` instead if you wish to deploy for production.
+#
+# This file differs as it does not use a builder container, nor does it
+# reinstall the project's python package after copying the source code,
+# saving significant time during rebuilds.
+#
+# To build the image, run `docker build` command from the root of the
+# repository:
+#
+#    docker build -f docker/Dockerfile .
+#
+# There is an optional PYTHON_VERSION build argument which sets the
+# version of python to build against. For example:
+#
+#    docker build -f docker/Dockerfile --build-arg PYTHON_VERSION=3.10 .
+#
+# An optional LIBOLM_VERSION build argument which sets the
+# version of libolm to build against. For example:
+#
+#    docker build -f docker/Dockerfile --build-arg LIBOLM_VERSION=3.2.10 .
+#
+
+# TODO: implement dev container
+
+ARG PYTHON_VERSION=3.8
+FROM docker.io/python:${PYTHON_VERSION}-alpine
+
+##
+## Build libolm for matrix-nio e2e support
+##
+
+# Install libolm build dependencies
+ARG LIBOLM_VERSION=3.2.16
+RUN apk add --no-cache \
+    make \
+    cmake \
+    gcc \
+    g++ \
+    git \
+    libffi-dev \
+    yaml-dev \
+    python3-dev
+
+# Build libolm
+COPY docker/build_and_install_libolm.sh /scripts/
+RUN /scripts/build_and_install_libolm.sh ${LIBOLM_VERSION}
+
+# Install native runtime dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    libpq \
+    postgresql-dev \
+    libstdc++ \
+    libmagic
+
+# Install python runtime modules. We do this before copying the source code
+# such that these dependencies can be cached
+RUN mkdir -p /app/bot_destroyer
+COPY bot_destroyer/__init__.py /app/bot_destroyer/
+COPY README.md main.py /app/
+
+# Build the dependencies
+RUN pip install --upgrade pip
+# Pin poetry version so updates don't break the build
+RUN pip install poetry==1.8.2
+
+# Disable poetry venv creation in builder.
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=0
+
+WORKDIR /app
+COPY pyproject.toml poetry.lock /app/
+
+# Export poetry.lock to requirements file omitting hashes for faster dependency resolution
+# And building libraries in external folder /python-libs
+RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
+# Install production dependencies
+RUN pip install -r requirements.txt
+
+
+# Now copy the source code
+COPY *.py *.md /app/
+COPY bot_destroyer/ /app/bot_destroyer/
+
+# Specify a volume that holds the config file, SQLite3 database,
+# and the matrix-nio store
+VOLUME ["/data"]
+
+# Start the app
+ENTRYPOINT ["python", "/app/main.py", "/data/config.yaml"]
